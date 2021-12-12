@@ -74,11 +74,11 @@ class CNF(nn.Module):
             rtol = self.rtol  # [self.rtol] * 3
         else:
             states = (x, _logpx)
-            atol = [self.atol] * 2
-            rtol = [self.rtol] * 2
+            # atol = [self.atol] * 2
+            # rtol = [self.rtol] * 2
             ## added ##
-            # atol = self.atol  # [self.atol] * 3
-            # rtol = self.rtol  # [self.rtol] * 3
+            atol = self.atol  # [self.atol] * 3
+            rtol = self.rtol  # [self.rtol] * 3
             ## added ##
 
         if integration_times is None:
