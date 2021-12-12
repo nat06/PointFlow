@@ -11,6 +11,7 @@ import faulthandler
 import torch.multiprocessing as mp
 import time
 import scipy.misc
+import imageio
 from models.networks import PointFlow
 from torch import optim
 from args import get_args
@@ -26,6 +27,9 @@ def main_worker(gpu, save_dir, ngpus_per_node, args):
     # basic setup
     cudnn.benchmark = True
     args.gpu = gpu
+
+    print("torch.cuda.is_available() : ", torch.cuda.is_available())
+
     if args.gpu is not None:
         print("Use GPU: {} for training".format(args.gpu))
 
@@ -69,6 +73,12 @@ def main_worker(gpu, save_dir, ngpus_per_node, args):
     elif args.gpu is not None:  # Single process, single GPU per process
         torch.cuda.set_device(args.gpu)
         model = model.cuda(args.gpu)
+    ## added ##
+    # elif True:  # Single process, single GPU per process
+    #     torch.cuda.set_device(0)
+    #     model = model.cuda(0)
+    #     print("GPU bb")
+    ## added ##
     else:  # Single process, multiple GPUs per process
         def _transform_(m):
             return nn.DataParallel(m)
@@ -79,7 +89,8 @@ def main_worker(gpu, save_dir, ngpus_per_node, args):
     start_epoch = 0
     optimizer = model.make_optimizer(args)
     if args.resume_checkpoint is None and os.path.exists(os.path.join(save_dir, 'checkpoint-latest.pt')):
-        args.resume_checkpoint = os.path.join(save_dir, 'checkpoint-latest.pt')  # use the latest checkpoint
+        args.resume_checkpoint = os.path.join(
+            save_dir, 'checkpoint-latest.pt')  # use the latest checkpoint
     if args.resume_checkpoint is not None:
         if args.resume_optimizer:
             model, optimizer, start_epoch = resume(
@@ -92,12 +103,14 @@ def main_worker(gpu, save_dir, ngpus_per_node, args):
     # initialize datasets and loaders
     tr_dataset, te_dataset = get_datasets(args)
     if args.distributed:
-        train_sampler = torch.utils.data.distributed.DistributedSampler(tr_dataset)
+        train_sampler = torch.utils.data.distributed.DistributedSampler(
+            tr_dataset)
     else:
         train_sampler = None
 
     train_loader = torch.utils.data.DataLoader(
-        dataset=tr_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
+        dataset=tr_dataset, batch_size=args.batch_size, shuffle=(
+            train_sampler is None),
         num_workers=0, pin_memory=True, sampler=train_sampler, drop_last=True,
         worker_init_fn=init_np_seed)
     test_loader = torch.utils.data.DataLoader(
@@ -107,12 +120,18 @@ def main_worker(gpu, save_dir, ngpus_per_node, args):
 
     # save dataset statistics
     if not args.distributed or (args.rank % ngpus_per_node == 0):
-        np.save(os.path.join(save_dir, "train_set_mean.npy"), tr_dataset.all_points_mean)
-        np.save(os.path.join(save_dir, "train_set_std.npy"), tr_dataset.all_points_std)
-        np.save(os.path.join(save_dir, "train_set_idx.npy"), np.array(tr_dataset.shuffle_idx))
-        np.save(os.path.join(save_dir, "val_set_mean.npy"), te_dataset.all_points_mean)
-        np.save(os.path.join(save_dir, "val_set_std.npy"), te_dataset.all_points_std)
-        np.save(os.path.join(save_dir, "val_set_idx.npy"), np.array(te_dataset.shuffle_idx))
+        np.save(os.path.join(save_dir, "train_set_mean.npy"),
+                tr_dataset.all_points_mean)
+        np.save(os.path.join(save_dir, "train_set_std.npy"),
+                tr_dataset.all_points_std)
+        np.save(os.path.join(save_dir, "train_set_idx.npy"),
+                np.array(tr_dataset.shuffle_idx))
+        np.save(os.path.join(save_dir, "val_set_mean.npy"),
+                te_dataset.all_points_mean)
+        np.save(os.path.join(save_dir, "val_set_std.npy"),
+                te_dataset.all_points_std)
+        np.save(os.path.join(save_dir, "val_set_idx.npy"),
+                np.array(te_dataset.shuffle_idx))
 
     # load classification dataset if needed
     if args.eval_classification:
@@ -136,14 +155,23 @@ def main_worker(gpu, save_dir, ngpus_per_node, args):
     if args.scheduler == 'exponential':
         scheduler = optim.lr_scheduler.ExponentialLR(optimizer, args.exp_decay)
     elif args.scheduler == 'step':
-        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.epochs // 2, gamma=0.1)
+        scheduler = optim.lr_scheduler.StepLR(
+            optimizer, step_size=args.epochs // 2, gamma=0.1)
     elif args.scheduler == 'linear':
         def lambda_rule(ep):
-            lr_l = 1.0 - max(0, ep - 0.5 * args.epochs) / float(0.5 * args.epochs)
+            lr_l = 1.0 - max(0, ep - 0.5 * args.epochs) / \
+                float(0.5 * args.epochs)
             return lr_l
-        scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda_rule)
+        scheduler = optim.lr_scheduler.LambdaLR(
+            optimizer, lr_lambda=lambda_rule)
     else:
         assert 0, "args.schedulers should be either 'exponential' or 'linear'"
+
+    print("torch.cuda.current_device() : ", torch.cuda.current_device())
+    print("torch.cuda.get_device_name(0) : ", torch.cuda.get_device_name(0))
+
+    #torch.device.(0)
+    #model.cuda(0)
 
     # main training loop
     start_time = time.time()
@@ -173,6 +201,9 @@ def main_worker(gpu, save_dir, ngpus_per_node, args):
                 tr_batch, _, _ = apply_random_rotation(
                     tr_batch, rot_axis=train_loader.dataset.gravity_axis)
             inputs = tr_batch.cuda(args.gpu, non_blocking=True)
+            ## added ##
+            # inputs = tr_batch.cuda(0, non_blocking=True)
+            ## added ##
             out = model(inputs, optimizer, step, writer)
             entropy, prior_nats, recon_nats = out['entropy'], out['prior_nats'], out['recon_nats']
             entropy_avg_meter.update(entropy)
@@ -188,7 +219,8 @@ def main_worker(gpu, save_dir, ngpus_per_node, args):
         # evaluate on the validation set
         if not args.no_validation and (epoch + 1) % args.val_freq == 0:
             from utils import validate
-            validate(test_loader, model, epoch, writer, save_dir, args, clf_loaders=clf_loaders)
+            validate(test_loader, model, epoch, writer,
+                     save_dir, args, clf_loaders=clf_loaders)
 
         # save visualizations
         if (epoch + 1) % args.viz_freq == 0:
@@ -196,15 +228,24 @@ def main_worker(gpu, save_dir, ngpus_per_node, args):
             model.eval()
             samples = model.reconstruct(inputs)
             results = []
+
+            # ## added ##
+            # sample_pcs = torch.cat(samples, dim=0).cpu().detach().numpy()
+            # np.save(os.path.join('images', 'samples_reconstructed%d-gpu%s.npy' % (epoch, args.gpu)), sample_pcs)
+            # ### added ##
+
             for idx in range(min(10, inputs.size(0))):
                 res = visualize_point_clouds(samples[idx], inputs[idx], idx,
                                              pert_order=train_loader.dataset.display_axis_order)
                 results.append(res)
             res = np.concatenate(results, axis=1)
-            scipy.misc.imsave(os.path.join(save_dir, 'images', 'tr_vis_conditioned_epoch%d-gpu%s.png' % (epoch, args.gpu)),
-                              res.transpose((1, 2, 0)))
+            # scipy.misc.imsave(os.path.join(save_dir, 'images', 'tr_vis_conditioned_epoch%d-gpu%s.png' % (epoch, args.gpu)),
+            #                   res.transpose((1, 2, 0)))
+            imageio.imwrite(os.path.join(save_dir, 'images', 'tr_vis_conditioned_epoch%d-gpu%s.png' % (epoch, args.gpu)),
+                            res.transpose((1, 2, 0)))
             if writer is not None:
-                writer.add_image('tr_vis/conditioned', torch.as_tensor(res), epoch)
+                writer.add_image('tr_vis/conditioned',
+                                 torch.as_tensor(res), epoch)
 
             # samples
             if args.use_latent_flow:
@@ -217,10 +258,13 @@ def main_worker(gpu, save_dir, ngpus_per_node, args):
                                                  pert_order=train_loader.dataset.display_axis_order)
                     results.append(res)
                 res = np.concatenate(results, axis=1)
-                scipy.misc.imsave(os.path.join(save_dir, 'images', 'tr_vis_conditioned_epoch%d-gpu%s.png' % (epoch, args.gpu)),
-                                  res.transpose((1, 2, 0)))
+                # scipy.misc.imsave(os.path.join(save_dir, 'images', 'tr_vis_conditioned_epoch%d-gpu%s.png' % (epoch, args.gpu)),
+                #                   res.transpose((1, 2, 0)))
+                imageio.imwrite(os.path.join(save_dir, 'images', 'tr_vis_conditioned_epoch%d-gpu%s.png' % (epoch, args.gpu)),
+                                res.transpose((1, 2, 0)))
                 if writer is not None:
-                    writer.add_image('tr_vis/sampled', torch.as_tensor(res), epoch)
+                    writer.add_image('tr_vis/sampled',
+                                     torch.as_tensor(res), epoch)
 
         # save checkpoints
         if not args.distributed or (args.rank % ngpus_per_node == 0):
@@ -263,9 +307,13 @@ def main():
     ngpus_per_node = torch.cuda.device_count()
     if args.distributed:
         args.world_size = ngpus_per_node * args.world_size
-        mp.spawn(main_worker, nprocs=ngpus_per_node, args=(save_dir, ngpus_per_node, args))
+        mp.spawn(main_worker, nprocs=ngpus_per_node,
+                 args=(save_dir, ngpus_per_node, args))
     else:
         main_worker(args.gpu, save_dir, ngpus_per_node, args)
+        ## added ##
+        # main_worker(0, save_dir, ngpus_per_node, args)
+        ## added ##
 
 
 if __name__ == '__main__':

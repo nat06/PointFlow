@@ -22,11 +22,13 @@ class SequentialFlow(nn.Module):
 
         if logpx is None:
             for i in inds:
-                x = self.chain[i](x, context, logpx, integration_times, reverse)
+                x = self.chain[i](x, context, logpx,
+                                  integration_times, reverse)
             return x
         else:
             for i in inds:
-                x, logpx = self.chain[i](x, context, logpx, integration_times, reverse)
+                x, logpx = self.chain[i](
+                    x, context, logpx, integration_times, reverse)
             return x, logpx
 
 
@@ -37,7 +39,8 @@ class CNF(nn.Module):
         self.train_T = train_T
         self.T = T
         if train_T:
-            self.register_parameter("sqrt_end_time", nn.Parameter(torch.sqrt(torch.tensor(T))))
+            self.register_parameter(
+                "sqrt_end_time", nn.Parameter(torch.sqrt(torch.tensor(T))))
 
         if regularization_fns is not None and len(regularization_fns) > 0:
             raise NotImplementedError("Regularization not supported")
@@ -46,6 +49,10 @@ class CNF(nn.Module):
         self.solver = solver
         self.atol = atol
         self.rtol = rtol
+        # ## added ##
+        # atol = self.atol #[self.atol] * 3
+        # rtol = self.rtol #[self.rtol] * 3
+        # ## added ##
         self.test_solver = solver
         self.test_atol = atol
         self.test_rtol = rtol
@@ -61,20 +68,28 @@ class CNF(nn.Module):
         if self.conditional:
             assert context is not None
             states = (x, _logpx, context)
-            atol = [self.atol] * 3
-            rtol = [self.rtol] * 3
+            # atol = [self.atol] * 3
+            # rtol = [self.rtol] * 3
+            atol = self.atol  # [self.atol] * 3
+            rtol = self.rtol  # [self.rtol] * 3
         else:
             states = (x, _logpx)
-            atol = [self.atol] * 2
-            rtol = [self.rtol] * 2
+            # atol = [self.atol] * 2
+            # rtol = [self.rtol] * 2
+            ## added ##
+            atol = self.atol  # [self.atol] * 3
+            rtol = self.rtol  # [self.rtol] * 3
+            ## added ##
 
         if integration_times is None:
             if self.train_T:
                 integration_times = torch.stack(
-                    [torch.tensor(0.0).to(x), self.sqrt_end_time * self.sqrt_end_time]
+                    [torch.tensor(0.0).to(
+                        x), self.sqrt_end_time * self.sqrt_end_time]
                 ).to(x)
             else:
-                integration_times = torch.tensor([0., self.T], requires_grad=False).to(x)
+                integration_times = torch.tensor(
+                    [0., self.T], requires_grad=False).to(x)
 
         if reverse:
             integration_times = _flip(integration_times, 0)
@@ -118,5 +133,6 @@ class CNF(nn.Module):
 
 def _flip(x, dim):
     indices = [slice(None)] * x.dim()
-    indices[dim] = torch.arange(x.size(dim) - 1, -1, -1, dtype=torch.long, device=x.device)
+    indices[dim] = torch.arange(
+        x.size(dim) - 1, -1, -1, dtype=torch.long, device=x.device)
     return x[tuple(indices)]
