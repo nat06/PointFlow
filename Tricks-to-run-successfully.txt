@@ -1,0 +1,13 @@
+Necessary steps to ensure compatibility:
+
+- Makefile: replace 3.6 with 3.7 (Python env version)
+
+- cnf.py: line 64-65, change to 
+	atol = self.atol #[self.atol] * 3
+	rtol = self.rtol #[self.rtol] * 3
+
+
+(for gen/CNF models)
+- cnf.py: replace the other one (*2) as above
+
+- train.py: replace scipy.misc by imageio.write
