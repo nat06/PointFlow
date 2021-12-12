@@ -218,6 +218,7 @@ def main_worker(gpu, save_dir, ngpus_per_node, args):
 
         # evaluate on the validation set
         if not args.no_validation and (epoch + 1) % args.val_freq == 0:
+            print("in validation set evaluation")
             from utils import validate
             validate(test_loader, model, epoch, writer,
                      save_dir, args, clf_loaders=clf_loaders)
